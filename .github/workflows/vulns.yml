@@ -100,12 +100,29 @@ jobs:
       # loading a linux build ("unexpected expr *ast.KeyValueExpr") -- a crash,
       # not an advisory, and a lane reading it as a finding would be red for a
       # reason unrelated to anything it measures.
+      #
+      # ⛔⛔ TWO TOOLCHAINS, AND THEY ARE NOT THE SAME QUESTION. The toolchain
+      # that BUILDS these tools must satisfy the tools' OWN requirements; the
+      # toolchain the SCAN runs under must be the one the caller's go.mod
+      # declares, because that is what decides every standard-library finding.
+      # The first version of this lane conflated them and broke the moment it
+      # met a caller below the tools' floor: go-richdoc/richdoc declares
+      # go 1.27.1, fleettools v0.85.0 declares `go 1.27.3`, and setup-go sets
+      # GOTOOLCHAIN=local by design — so `go install` refused rather than
+      # fetching a newer toolchain, and the lane failed with nothing to do with
+      # that repository's dependencies. It passed in the two callers measured
+      # first only because both declare 1.27.3 themselves.
+      #
+      # GOTOOLCHAIN=auto on the INSTALLS alone lets each tool build with
+      # whatever its own go.mod requires. The scan below keeps the local
+      # toolchain, so the standard library judged is still the caller's.
       - name: govulncheck, judged by vulngate
         run: |
           set -eu
-          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
-          go install github.com/go-fleettools/fleettools/cmd/vulngate@v0.85.0
+          GOTOOLCHAIN=auto go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          GOTOOLCHAIN=auto go install github.com/go-fleettools/fleettools/cmd/vulngate@v0.85.0
           BIN="$(go env GOPATH)/bin"
+          echo "tools built with GOTOOLCHAIN=auto; scanning as $(go env GOVERSION)"
           "$BIN/govulncheck" -format json ./... > "$RUNNER_TEMP/vuln.json" || true
           test -s "$RUNNER_TEMP/vuln.json" || { echo "::error::govulncheck wrote nothing at all"; exit 1; }
           "$BIN/vulngate" --go "$(go env GOVERSION)" "$RUNNER_TEMP/vuln.json"
