@@ -1,0 +1,111 @@
+# The organisation's govulncheck lane, defined ONCE and called by each module.
+#
+# ⛔ WHY IT EXISTS. Measured 2026-11-08 over this organisation's ten Go modules:
+# not one of them ran govulncheck in CI (zero hits for it across all ten
+# .github directories), while three security bumps had already landed in a
+# single repository -- go-richdoc/rst#178, #189 and #191 -- every one of them
+# found because a person happened to type the command by hand. `vulnscan` over
+# the same ten at origin/main under the CI toolchain said CALLED 0, CLEAN 10,
+# UNREAD 0: clean that morning, with nothing standing between them and the next
+# advisory.
+#
+# The newest of those three is why it is not a hypothetical. GO-2026-6888 is
+# unbounded allocation while decompressing a crafted brotli stream, and it sat
+# in govulncheck's SYMBOL results -- reachable, not merely required -- with the
+# trace `pdf.WriteTo -> engine.CompileToPDF -> brotli.Reader.Read`. So a crafted
+# stream reaching a PDF compile could make the process allocate without bound:
+# exactly the defect class this family bounds in its own readers, arriving
+# through a dependency instead.
+#
+# ⛔ AND WHY A PIN IS NOT A SUBSTITUTE. That advisory was closed by requiring
+# `github.com/andybalholm/brotli v1.2.7 // indirect` explicitly. The morning
+# this file was written, `go mod tidy` REMOVED that line from two repositories,
+# correctly: go-tex/engine v0.271.0 brings a graph whose own brotli is v1.2.8,
+# and minimal version selection takes the maximum of what anything requires, so
+# the explicit line no longer raised the floor. Correct, measured -- and it
+# silently deleted the only standing protection either repository had. A pin
+# that `tidy` may legitimately retire is not a control. The lane is.
+#
+# ⛔ WHY ONE DEFINITION. Nine copies of a lane drift, and the copy that drifts
+# is the one nobody reads. The reasoning lives here; a caller is two lines:
+#
+#     vulns:
+#       uses: go-richdoc/.github/.github/workflows/vulns.yml@main
+#
+# @main and not a pinned SHA, deliberately: this is a workflow of the SAME
+# organisation, under the same review and the same branch protection as the
+# callers, and a pinned SHA in ten repositories would need ten pull requests to
+# move -- which is how the single definition would quietly become nine again.
+# A third-party action is pinned; a sibling of the caller is not.
+
+name: vulns
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: >-
+          An explicit toolchain to scan under. Leave it unset — the default — to
+          follow the caller's own go.mod, which is the right answer and not
+          merely the convenient one: the standard library's findings are decided
+          by one version, and the version a module DECLARES is the one its
+          consumers are entitled to build it with. Measured elsewhere in the
+          fleet: identical source reported eight standard-library advisories
+          under go1.27.1 and none under go1.27.2, so a lane that scanned under a
+          newer toolchain than the module declares would report clean about code
+          nobody is obliged to build that way. Set this only to answer a
+          different question on purpose, and say why at the call site.
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  vulns:
+    name: govulncheck, judged by vulngate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Exactly one of the two is ever non-empty: setup-go prefers go-version
+      # when both are set, and `gofloor` reports a hard-coded version as a
+      # finding precisely because a lane pinned beside a go.mod drifts from it
+      # silently.
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ inputs.go-version }}
+          go-version-file: ${{ inputs.go-version == '' && 'go.mod' || '' }}
+      # Printed, because the toolchain IS part of the verdict: a reader of a
+      # green run can see which standard library was judged.
+      - run: go version
+
+      # ⛔ NO `set -o pipefail`, and the `|| true` is deliberate rather than
+      # sloppy. govulncheck exits non-zero over findings it has itself decided
+      # this module does not CALL, and zero over some it does: its exit status
+      # answers a different question from the one this lane asks. That is why
+      # the stream is handed to vulngate instead of being believed.
+      #
+      # An unread or truncated scan is caught twice: by the emptiness test
+      # below, and by vulngate, which believes a run only when it carried both
+      # a config AND an SBOM -- the SBOM being written only once the packages
+      # have actually loaded. A scan that could not load the packages prints no
+      # finding, and read as JSON alone that is indistinguishable from a clean
+      # repository.
+      #
+      # ⛔ BOTH TOOLS PINNED, and govulncheck NOT at @latest: an unpinned
+      # install is the one line in a workflow Renovate cannot keep honest, and
+      # the scanner's version decides the answer exactly as the toolchain does.
+      # v1.1.4, which parts of this fleet still pin locally, PANICS when
+      # loading a linux build ("unexpected expr *ast.KeyValueExpr") -- a crash,
+      # not an advisory, and a lane reading it as a finding would be red for a
+      # reason unrelated to anything it measures.
+      - name: govulncheck, judged by vulngate
+        run: |
+          set -eu
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          go install github.com/go-fleettools/fleettools/cmd/vulngate@v0.85.0
+          BIN="$(go env GOPATH)/bin"
+          "$BIN/govulncheck" -format json ./... > "$RUNNER_TEMP/vuln.json" || true
+          test -s "$RUNNER_TEMP/vuln.json" || { echo "::error::govulncheck wrote nothing at all"; exit 1; }
+          "$BIN/vulngate" --go "$(go env GOVERSION)" "$RUNNER_TEMP/vuln.json"
