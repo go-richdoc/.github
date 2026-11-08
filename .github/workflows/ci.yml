@@ -45,8 +45,18 @@ jobs:
       #    with well-formed expressions and no unknown keys.
       #    DOES NOT PROVE: that any action it references exists or works.
       - name: Workflows parse
+        # --retry, because this step went red on an HTTP 504 from the release
+        # download (PR #25, 2026-11-08, five seconds in, nothing to do with the
+        # change under review). A one-shot fetch of a third-party artefact
+        # makes the organisation's ONLY validation lane exactly as reliable as
+        # somebody else's CDN, and a red run that means nothing is how a lane
+        # stops being read.
+        #
+        # --retry-all-errors is required and not belt-and-braces: without it
+        # curl retries connection failures and a few 5xx, but treats a 504 as a
+        # final answer, which is the code actually seen.
         run: |
-          curl -sSfL -o actionlint.tar.gz \
+          curl -sSfL --retry 5 --retry-all-errors --retry-delay 2 -o actionlint.tar.gz \
             https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
           tar xzf actionlint.tar.gz actionlint
           ./actionlint .github/workflows/*.yml
