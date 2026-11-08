@@ -45,14 +45,19 @@ on:
     inputs:
       go-version:
         description: >-
-          The toolchain to scan under. It must be the one the caller's own test
-          lane builds with: the standard library's findings are decided by that
-          one version, so a scan resolving another answers about different code.
-          Measured elsewhere in the fleet: identical source reported eight
-          standard-library advisories under go1.27.1 and none under go1.27.2.
+          An explicit toolchain to scan under. Leave it unset — the default — to
+          follow the caller's own go.mod, which is the right answer and not
+          merely the convenient one: the standard library's findings are decided
+          by one version, and the version a module DECLARES is the one its
+          consumers are entitled to build it with. Measured elsewhere in the
+          fleet: identical source reported eight standard-library advisories
+          under go1.27.1 and none under go1.27.2, so a lane that scanned under a
+          newer toolchain than the module declares would report clean about code
+          nobody is obliged to build that way. Set this only to answer a
+          different question on purpose, and say why at the call site.
         required: false
         type: string
-        default: "1.27.3"
+        default: ""
 
 permissions:
   contents: read
@@ -63,9 +68,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # Exactly one of the two is ever non-empty: setup-go prefers go-version
+      # when both are set, and `gofloor` reports a hard-coded version as a
+      # finding precisely because a lane pinned beside a go.mod drifts from it
+      # silently.
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ inputs.go-version }}
+          go-version-file: ${{ inputs.go-version == '' && 'go.mod' || '' }}
+      # Printed, because the toolchain IS part of the verdict: a reader of a
+      # green run can see which standard library was judged.
       - run: go version
 
       # ⛔ NO `set -o pipefail`, and the `|| true` is deliberate rather than

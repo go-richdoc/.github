@@ -16,9 +16,13 @@ once. A module calls it with two lines:
 It runs `govulncheck` and hands the JSON stream to `vulngate` rather than
 believing the exit status, which answers a different question — non-zero over
 findings it has itself decided the module does not *call*, zero over some it
-does. Add `with: {go-version: "1.27.x"}` only if the caller's test lane builds
-with something other than the default: the standard library's findings are
-decided by that one version.
+does.
+
+It scans under the caller's own `go.mod`, because the standard library's
+findings are decided by one version and the version a module declares is the
+one its consumers may build it with: identical source reports eight
+standard-library advisories under `go1.27.1` and none under `go1.27.2`. Pass
+`with: {go-version: "1.27.x"}` only to ask a different question on purpose.
 
 It exists because on 2026-11-08 none of this organisation's ten Go modules ran
 `govulncheck` in CI, while three advisories had already been fixed in one of
