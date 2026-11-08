@@ -41,25 +41,36 @@ jobs:
         with:
           node-version: '24'
 
+      # For actionlint, installed from the module proxy below rather than
+      # fetched from a release CDN that answered 504 on this lane.
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.3'
+
       # 1. PROVES: every workflow file is a parseable GitHub Actions workflow
       #    with well-formed expressions and no unknown keys.
       #    DOES NOT PROVE: that any action it references exists or works.
+      #
+      #    ⛔ INSTALLED FROM THE MODULE PROXY, not downloaded from a release.
+      #    This step used to fetch the release tarball with a one-shot
+      #    `curl -sSfL`, and on 2026-11-08 that answered HTTP 504 — six times
+      #    in a row with `--retry 5 --retry-all-errors`, so not a blip. The
+      #    same URL served 200 and 2 MB from a workstation at the same minute
+      #    and githubstatus.com reported all systems operational: the failure
+      #    was the RUNNER's egress to the release CDN, which no amount of
+      #    retrying from inside the runner can fix. The organisation's only
+      #    validation lane spent two runs red for a reason unrelated to
+      #    anything under review, which is how a lane stops being read.
+      #
+      #    actionlint is a Go program, so `go install` pins it by module
+      #    version, verifies it through the checksum database, and arrives over
+      #    proxy.golang.org — the path every other lane in this organisation
+      #    already depends on and which was working in the same minute.
       - name: Workflows parse
-        # --retry, because this step went red on an HTTP 504 from the release
-        # download (PR #25, 2026-11-08, five seconds in, nothing to do with the
-        # change under review). A one-shot fetch of a third-party artefact
-        # makes the organisation's ONLY validation lane exactly as reliable as
-        # somebody else's CDN, and a red run that means nothing is how a lane
-        # stops being read.
-        #
-        # --retry-all-errors is required and not belt-and-braces: without it
-        # curl retries connection failures and a few 5xx, but treats a 504 as a
-        # final answer, which is the code actually seen.
         run: |
-          curl -sSfL --retry 5 --retry-all-errors --retry-delay 2 -o actionlint.tar.gz \
-            https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
-          tar xzf actionlint.tar.gz actionlint
-          ./actionlint .github/workflows/*.yml
+          set -eu
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          "$(go env GOPATH)/bin/actionlint" .github/workflows/*.yml
 
       # 2. PROVES: every `uses: owner/repo@ref` in every workflow resolves to a
       #    ref that exists in that repository today. This is the step with
