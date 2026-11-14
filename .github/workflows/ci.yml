@@ -45,7 +45,7 @@ jobs:
       # fetched from a release CDN that answered 504 on this lane.
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27.3'
+          go-version: '1.27.4'
 
       # 1. PROVES: every workflow file is a parseable GitHub Actions workflow
       #    with well-formed expressions and no unknown keys.
