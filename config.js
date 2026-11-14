@@ -19,7 +19,19 @@ module.exports = {
   autodiscoverFilter: ['go-richdoc/**'],
   onboarding: false,
   requireConfig: 'optional',
-  dependencyDashboard: true,
+  // ⛔ THE OBJECT FORM, NOT `true`. Renovate migrated `dependencyDashboard`
+  // from a boolean to `{ enabled }`, and `renovate-config-validator --strict`
+  // exits 1 on a config that still needs migrating — it prints the migration
+  // diff and the new config, which is where this spelling comes from.
+  //
+  // ⛔ Nothing in this repository changed when that started failing, and the
+  // evidence is a measurement rather than a guess: commit 86ce8ede validated
+  // GREEN on 2026-11-13 and the SAME commit, dispatched on 2026-11-14,
+  // FAILED. The step installs `renovate@latest`, so the validator moves under
+  // the repository between two runs of one commit. A pull request open across
+  // that boundary (#28, a one-line go-version bump) looked like the cause and
+  // was not.
+  dependencyDashboard: { enabled: true },
   repositoryCache: 'enabled',
   // default.json beside this file is a PRESET, and a preset reaches a
   // repository only through an `extends` that names it. Sitting in the
