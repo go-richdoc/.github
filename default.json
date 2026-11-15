@@ -8,6 +8,26 @@
     "gomodTidy",
     "gomodUpdateImportPaths"
   ],
+  "customManagers": [
+    {
+      "description": [
+        "A tool a workflow installs with `go install module@vN` is a pinned dependency that NO manager reads. Renovate's gomod manager looks at go.mod; github-actions looks at `uses:`; a version inside a `run:` block is seen by neither, so it is a pin that will never be offered an update.",
+        "Added on 2026-11-15, measured on this organisation rather than argued. `.github/workflows/vulns.yml` is the shared govulncheck lane that TEN modules of this org call, and it pins two tools inside one `run:` block: govulncheck@v1.9.0 and github.com/go-fleettools/fleettools/cmd/vulngate@v0.85.0. The Dependency Dashboard of this repository listed, for that file, exactly two dependencies -- actions/checkout and actions/setup-go -- and NEITHER of the `go install` pins. vulngate was at v0.85.0 while v0.123.0 was released: thirty-eight releases, with nothing watching.",
+        "⛔ And it is the worst possible place for an unread pin: vulngate is the JUDGE of every vulnerability finding in this organisation. A judge going quietly stale does not fail; it keeps answering, with an older idea of what counts.",
+        "depName is the MODULE, not the package: `go install` takes a package path and the proxy knows modules. The `/cmd/<name>` group is OPTIONAL because not every tool in this fleet lives at `<module>/cmd/<name>` -- go-fleettools/prwait and staletools have their main package at the module ROOT, and `go install github.com/go-fleettools/prwait@v0.10.0` is how they are installed. A module whose own path ends in `/cmd/<something>` would still be read wrong; none does here.",
+        "A version of `latest` is deliberately NOT matched: there is no version to compare or rewrite. An @latest in these lanes is a deliberate float, and the rule that should refuse an UNDECLARED one is go-fleettools/fleettools#289, not this manager.",
+        "⛔ NOT WRITTEN HERE FIRST. go-fleettools/.github and go-crdt/.github already carried this manager, with this reasoning; this is the third copy and the omission in this org is what left the pins above unwatched. Two copies of a rule is one copy being wrong, and the alternative -- a shared preset repository -- is a dependency every organisation's Renovate run must fetch before it can read its own config. Kept as copies deliberately, and every copy's description says so."
+      ],
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/[^/]+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "go install (?<depName>[^\\s@]+?)(?:/cmd/[^\\s@/]+)?@(?<currentValue>v[^\\s]+)"
+      ],
+      "datasourceTemplate": "go"
+    }
+  ],
   "packageRules": [
     {
       "description": [
