@@ -119,8 +119,8 @@ jobs:
       - name: govulncheck, judged by vulngate
         run: |
           set -eu
-          GOTOOLCHAIN=auto go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
-          GOTOOLCHAIN=auto go install github.com/go-fleettools/fleettools/cmd/vulngate@v0.85.0
+          GOTOOLCHAIN=auto go install golang.org/x/vuln/cmd/govulncheck@v1.10.0
+          GOTOOLCHAIN=auto go install github.com/go-fleettools/fleettools/cmd/vulngate@v0.186.0
           BIN="$(go env GOPATH)/bin"
           echo "tools built with GOTOOLCHAIN=auto; scanning as $(go env GOVERSION)"
           "$BIN/govulncheck" -format json ./... > "$RUNNER_TEMP/vuln.json" || true
